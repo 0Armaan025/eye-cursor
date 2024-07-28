@@ -3,10 +3,8 @@ import mediapipe as mp
 import pyautogui
 import numpy as np
 import time
-import keyboard
 
-
-
+# Initialize camera and Mediapipe hands solution
 cam = cv2.VideoCapture(0)
 cv2.namedWindow('Hand Control', cv2.WINDOW_NORMAL)
 cv2.resizeWindow('Hand Control', 1280, 720)
@@ -14,6 +12,7 @@ capture_hands = mp.solutions.hands.Hands(max_num_hands=1, min_detection_confiden
 drawing_option = mp.solutions.drawing_utils
 screen_w, screen_h = pyautogui.size()
 
+# Gesture detection functions
 def is_touching(landmarks):
     thumb_tip = landmarks[4]
     index_tip = landmarks[8]
@@ -23,9 +22,18 @@ def is_touching(landmarks):
 def is_fist(landmarks):
     return all(landmarks[i].y > landmarks[i + 3].y for i in range(5, 20, 4))
 
-def smooth_movement(old_pos, new_pos, smoothing_factor=0.2):
+def is_circle(landmarks):
+    thumb_tip = landmarks[4]
+    index_tip = landmarks[8]
+    middle_tip = landmarks[12]
+    distance_thumb_index = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
+    distance_thumb_middle = ((thumb_tip.x - middle_tip.x) ** 2 + (thumb_tip.y - middle_tip.y) ** 2) ** 0.5
+    return distance_thumb_index < 0.05 and distance_thumb_middle < 0.05
+
+def smooth_movement(old_pos, new_pos, smoothing_factor=0.7):
     return old_pos * (1 - smoothing_factor) + new_pos * smoothing_factor
 
+# Keyboard setup
 keys = [
     ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
     ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
@@ -92,23 +100,6 @@ while True:
             elif index_tip.y >= index_pip.y:
                 clicking = False
 
-            if show_keyboard:
-                for key, pos in key_positions.items():
-                    cv2.rectangle(frame, pos, (pos[0] + key_size[0], pos[1] + key_size[1]), (255, 0, 0), -1)
-                    cv2.putText(frame, key, (pos[0] + 10, pos[1] + 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-
-                if y < 300:
-                    row = (y - 50) // key_size[1]
-                    col = (x - 50) // key_size[0]
-                    if 0 <= row < len(keys) and 0 <= col < len(keys[row]):
-                        key = keys[row][col]
-                        if not clicking:
-                            pyautogui.typewrite(key)
-                            time.sleep(0.1)
-                            clicking = True
-                    else:
-                        clicking = False
-
             thumb_cmc = one_hand_landmarks[2]
             pinky_mcp = one_hand_landmarks[17]
             distance = ((thumb_cmc.x - pinky_mcp.x) ** 2 + (thumb_cmc.y - pinky_mcp.y) ** 2) ** 0.5
@@ -126,9 +117,33 @@ while True:
             else:
                 scrolling = False
 
-            if is_fist(one_hand_landmarks):
+            if is_fist(one_hand_landmarks) or is_circle(one_hand_landmarks):
                 toggle_keyboard()
-    
+
+    if show_keyboard:
+        for key, pos in key_positions.items():
+            cv2.rectangle(frame, pos, (pos[0] + key_size[0], pos[1] + key_size[1]), (255, 0, 0), -1)
+            cv2.putText(frame, key, (pos[0] + 10, pos[1] + 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+        index_tip = one_hand_landmarks[8]
+        x = int(index_tip.x * image_width)
+        y = int(index_tip.y * image_height)
+
+        if y < 300:
+            row = (y - 50) // key_size[1]
+            col = (x - 50) // key_size[0]
+            if 0 <= row < len(keys) and 0 <= col < len(keys[row]):
+                key = keys[row][col]
+                pos = key_positions[key]
+                cv2.rectangle(frame, pos, (pos[0] + key_size[0], pos[1] + key_size[1]), (0, 255, 0), -1)
+                cv2.putText(frame, key, (pos[0] + 10, pos[1] + 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                if not clicking:
+                    pyautogui.typewrite(key)
+                    time.sleep(0.1)
+                    clicking = True
+            else:
+                clicking = False
+
     cv2.imshow('Hand Control', frame)
     key = cv2.waitKey(10)
     if key == 27:
@@ -136,4 +151,3 @@ while True:
 
 cam.release()
 cv2.destroyAllWindows()
-keyboard.unhook_all()
